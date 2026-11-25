@@ -1,0 +1,11 @@
+---
+- name: Playbook - Install tree on some hosts
+  hosts: planetexpress:!farnsworth:!bender   # subtract two hosts from the group
+  gather_facts: yes
+
+  tasks:
+  - name: using apt to install tree
+    ansible.builtin.apt:
+      name: tree
+      state: present
+    become: yes

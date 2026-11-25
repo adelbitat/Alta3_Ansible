@@ -1,0 +1,84 @@
+---
+- name: Minecraft debug challenge
+  hosts: zoidberg
+  connection: ssh
+  gather_facts: no
+  become: yes
+
+  vars:
+    mc_server_link: https://piston-data.mojang.com/v1/objects/c9df48efed58511cdd0213c56b9013a7b5c9ac1f/server.jar
+
+    mc_packages:
+      - default-jre-headless
+      - fail2ban
+
+  tasks:
+
+    - name: Install applications
+      tags: install
+      block:
+
+        - name: Update apt cache
+          apt:
+            update_cache: yes
+
+        - name: Install apps for Minecraft server
+          apt:
+            name: "{{ mc_packages }}"
+            state: present
+
+      rescue:
+
+        - name: Uninstall applications
+          apt:
+            name: packages_to_remove
+              - default-jre-headless
+              - fail2ban
+            state: absent
+
+        - name: Announce installation failure
+          fail:
+            msg: "Installation failed! Applications have been uninstalled."
+
+    - name: Setup fail2ban (SSH protection)
+      tags: security
+      block:
+
+        - name: Configure fail2ban
+          copy:
+            dest: /etc/fail2ban/jail.local
+            content: |
+              [sshd]
+              enabled = true
+              backend = systemd
+              bantime = 20000
+          notify: Restart fail2ban
+
+        - name: Ensure fail2ban is running
+          service:
+            name: fail2ban
+            state: started
+            enabled: yes
+
+    - name: Download Minecraft server JAR file
+      tags: minecraft
+      block:
+
+        - name: Add a directory
+          file:
+            path: "/home/{{ ansible_user }}/minecraft"
+            state: directory
+          become: no
+
+        - name: Download Minecraft server
+          get_url:
+            url: "{{ mc_server_link }}"
+            dest: "/home/{{ ansible_user }}/minecraft/minecraft_server.jar"
+          become: no
+
+  handlers:
+
+    - name: Restart fail2ban
+      service:
+        name: fail2ban
+        state: restarted

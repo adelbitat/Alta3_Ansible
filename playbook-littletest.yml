@@ -1,0 +1,24 @@
+---
+- name: Demonstrate Ansible callback plugins
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  tasks:
+    - name: Ensure our demo directory exists
+      ansible.builtin.file:
+        path: /tmp/ansible-callback-demo
+        state: directory
+        mode: '0755'
+
+    - name: Display the Linux distribution
+      ansible.builtin.debug:
+        var: ansible_facts['distribution']
+
+    - name: Display the distribution version
+      ansible.builtin.debug:
+        var: ansible_facts['distribution_version']
+
+    - name: Display a friendly message
+      ansible.builtin.debug:
+        msg: "Ansible callback plugins are pretty cool!"
