@@ -1,0 +1,13 @@
+---
+- name: Gather facts from FRR routers
+  hosts: routers
+  gather_facts: false
+
+  tasks:
+    - name: Collect device facts
+      frr.frr.frr_facts:
+        gather_subset: all
+
+    - name: Show a few of them
+      ansible.builtin.debug:
+        msg: "{{ ansible_facts['net_hostname'] }} runs FRR {{ ansible_facts['net_version'] }} with interfaces {{ ansible_facts['net_interfaces'] | list }}"

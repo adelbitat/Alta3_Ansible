@@ -1,0 +1,72 @@
+---
+- name: Configure eBGP between r1 and r2
+  hosts: routers
+  gather_facts: false
+
+  tasks:
+    # The running config lands in ansible_facts['net_config']. The tasks below
+    # check it so they only push lines that are missing.
+    - name: Read the current running config
+      frr.frr.frr_facts:
+        gather_subset: config
+
+    # cli_command sends one line at a time. network_cli keeps the
+    # same SSH session open, so "configure terminal" carries over
+    # from one loop item to the next.
+    - name: Address the loopback and eth1, create a route-map
+      ansible.netcommon.cli_command:
+        command: "{{ item }}"
+      loop:
+        - configure terminal
+        - interface lo
+        - ip address {{ rid }}/32
+        - exit
+        - interface eth1
+        - ip address {{ eth1_ip }}
+        - exit
+        - route-map PERMIT_ALL permit 10
+        - exit
+        - end
+      when: >-
+        ('ip address ' ~ rid ~ '/32') not in ansible_facts['net_config'] or
+        ('ip address ' ~ eth1_ip) not in ansible_facts['net_config'] or
+        'route-map PERMIT_ALL permit 10' not in ansible_facts['net_config']
+      changed_when: true
+
+    # frr_bgp is declarative: describe the BGP config you want and the
+    # module works out which commands to send.
+    - name: Configure BGP
+      frr.frr.frr_bgp:
+        config:
+          bgp_as: "{{ asn }}"
+          router_id: "{{ rid }}"
+          neighbors:
+            - neighbor: "{{ peer }}"
+              remote_as: "{{ peer_as }}"
+          address_family:
+            - afi: ipv4
+              safi: unicast
+              networks:
+                - prefix: "{{ rid }}"
+                  masklen: 32
+        operation: merge
+
+    # FRR won't send or accept eBGP routes unless the neighbor has a
+    # policy applied (RFC 8212). frr_bgp has no option for that, so
+    # apply it with cli_command.
+    - name: Apply the route-map to the neighbor
+      ansible.netcommon.cli_command:
+        command: "{{ item }}"
+      loop:
+        - configure terminal
+        - router bgp {{ asn }}
+        - address-family ipv4 unicast
+        - neighbor {{ peer }} route-map PERMIT_ALL in
+        - neighbor {{ peer }} route-map PERMIT_ALL out
+        - end
+      when: ('neighbor ' ~ peer ~ ' route-map PERMIT_ALL in') not in ansible_facts['net_config']
+      changed_when: true
+
+    - name: Save the running config to /etc/frr/frr.conf
+      ansible.netcommon.cli_command:
+        command: write memory

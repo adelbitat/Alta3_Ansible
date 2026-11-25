@@ -1,0 +1,30 @@
+---
+- name: Add and advertise a second loopback on r1
+  hosts: r1
+  gather_facts: false
+
+  tasks:
+    - name: Add 11.11.11.11/32 to the loopback
+      ansible.netcommon.cli_command:
+        command: "{{ item }}"
+      loop:
+        - configure terminal
+        - interface lo
+        - ip address 11.11.11.11/32
+        - end
+
+    - name: Advertise it in BGP
+      frr.frr.frr_bgp:
+        config:
+          bgp_as: "{{ asn }}"
+          address_family:
+            - afi: ipv4
+              safi: unicast
+              networks:
+                - prefix: 11.11.11.11
+                  masklen: 32
+        operation: merge
+
+    - name: Save the config
+      ansible.netcommon.cli_command:
+        command: write memory

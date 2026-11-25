@@ -1,0 +1,38 @@
+---
+- name: Verify BGP and back up the routers
+  hosts: routers
+  gather_facts: false
+
+  tasks:
+    - name: Wait for the BGP session to come up
+      ansible.netcommon.cli_command:
+        command: show ip bgp summary json
+      register: bgp_raw
+      until: (bgp_raw.stdout | from_json).ipv4Unicast.peers[peer].state | default('') == 'Established'
+      retries: 12
+      delay: 5
+
+    - name: Parse BGP summary into a variable
+      ansible.utils.cli_parse:
+        command: show ip bgp summary json
+        parser:
+          name: ansible.utils.json
+        set_fact: bgp
+
+    - name: Report the BGP neighbor
+      ansible.builtin.debug:
+        msg: "Neighbor {{ peer }} (AS {{ bgp.ipv4Unicast.peers[peer].remoteAs }}) is {{ bgp.ipv4Unicast.peers[peer].state }}, prefixes received: {{ bgp.ipv4Unicast.peers[peer].pfxRcd }}"
+
+    - name: Get the routes learned from BGP
+      ansible.netcommon.cli_command:
+        command: show ip route bgp
+      register: routes
+
+    - name: Show the BGP routes
+      ansible.builtin.debug:
+        msg: "{{ routes.stdout_lines | select('match', '^B') | list }}"
+
+    - name: Back up the running config to bchd
+      ansible.netcommon.cli_backup:
+        dir_path: ./backups
+        filename: "{{ inventory_hostname }}.cfg"
